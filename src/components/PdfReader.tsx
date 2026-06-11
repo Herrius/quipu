@@ -11,6 +11,7 @@ import {
   type Highlight,
 } from "../api";
 import { ReaderPanel } from "./ReaderPanel";
+import { FocusReader, type WordChunk } from "./FocusReader";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -125,6 +126,8 @@ export function PdfReader({ book, onClose }: Props) {
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  const [focusMode, setFocusMode] = useState(false);
+  const focusPageRef = useRef(1);
   const restored = useRef(false);
   const pageRef = useRef(page);
   pageRef.current = page;
@@ -263,13 +266,39 @@ export function PdfReader({ book, onClose }: Props) {
     reloadNotes();
   }
 
+  function openFocusMode() {
+    focusPageRef.current = page;
+    setFocusMode(true);
+  }
+
+  // Entrega el texto de la siguiente página para el modo enfocado.
+  const loadFocusWords = useCallback(async (): Promise<WordChunk | null> => {
+    if (!doc || focusPageRef.current > doc.numPages) return null;
+    const p = focusPageRef.current++;
+    const pg = await doc.getPage(p);
+    const content = await pg.getTextContent();
+    const text = content.items
+      .map((item) => ("str" in item ? item.str : ""))
+      .join(" ");
+    return { words: text.split(/\s+/).filter(Boolean), marker: p };
+  }, [doc]);
+
+  function closeFocusMode(lastMarker: number | null) {
+    setFocusMode(false);
+    if (lastMarker !== null) {
+      setPage(lastMarker);
+      scrollToPage(lastMarker);
+    }
+  }
+
   useEffect(() => {
+    if (focusMode) return; // el modo enfocado maneja su propio teclado
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, focusMode]);
 
   if (error) {
     return (
@@ -286,6 +315,7 @@ export function PdfReader({ book, onClose }: Props) {
         <button className="btn btn-ghost" onClick={onClose}>← Biblioteca</button>
         <span className="reader-title">{book.title}</span>
         <div className="reader-controls">
+          <button className="btn btn-ghost" title="Modo lector enfocado" onClick={openFocusMode}>⚡</button>
           <button className="btn btn-ghost" title="Marcar aquí" onClick={addBookmark}>🔖</button>
           <button
             className={`btn btn-ghost ${panelOpen ? "active" : ""}`}
@@ -352,6 +382,13 @@ export function PdfReader({ book, onClose }: Props) {
         </button>
       )}
       {toast && <div className="toast">{toast}</div>}
+      {focusMode && (
+        <FocusReader
+          title={book.title}
+          loadMore={loadFocusWords}
+          onClose={closeFocusMode}
+        />
+      )}
     </div>
   );
 }

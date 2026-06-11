@@ -8,8 +8,15 @@ import {
   type Highlight,
 } from "../api";
 import { ReaderPanel } from "./ReaderPanel";
+import { FocusReader, type WordChunk } from "./FocusReader";
 
 const HIGHLIGHT_STYLE = { fill: "rgba(224, 164, 88, 0.35)" };
+
+interface SpineSection {
+  href: string;
+  load: (loader: unknown) => Promise<Document>;
+  unload?: () => void;
+}
 
 const THEMES: Record<string, Record<string, Record<string, string>>> = {
   dark: {
@@ -34,7 +41,13 @@ interface Props {
 export function EpubReader({ book, onClose }: Props) {
   const viewRef = useRef<HTMLDivElement>(null);
   const renditionRef = useRef<Rendition | null>(null);
+  const epubBookRef = useRef<ReturnType<typeof ePub> | null>(null);
   const cfiRef = useRef<string | null>(book.location);
+  const spineIdxRef = useRef(0);
+  const focusIdxRef = useRef(0);
+  const [focusMode, setFocusMode] = useState(false);
+  const focusModeRef = useRef(false);
+  focusModeRef.current = focusMode;
   const [theme, setTheme] = useState("dark");
   const [fontSize, setFontSize] = useState(110);
   const [percent, setPercent] = useState(book.percent);
@@ -66,6 +79,7 @@ export function EpubReader({ book, onClose }: Props) {
       const bytes = await api.readBook(book.id);
       if (destroyed) return;
       epubBook = ePub(bytes);
+      epubBookRef.current = epubBook;
       const rendition = epubBook.renderTo(el, {
         width: "100%",
         height: "100%",
@@ -79,9 +93,10 @@ export function EpubReader({ book, onClose }: Props) {
         rendition.themes.register(name, styles);
       }
 
-      rendition.on("relocated", (loc: { start: { cfi: string } }) => {
+      rendition.on("relocated", (loc: { start: { cfi: string; index: number } }) => {
         const cfi = loc.start.cfi;
         cfiRef.current = cfi;
+        spineIdxRef.current = loc.start.index ?? 0;
         let pct = 0;
         try {
           pct = epubBook!.locations.percentageFromCfi(cfi) ?? 0;
@@ -144,6 +159,7 @@ export function EpubReader({ book, onClose }: Props) {
     })().catch((e) => !destroyed && setError(String(e)));
 
     function handleKeys(e: KeyboardEvent) {
+      if (focusModeRef.current) return; // el modo enfocado maneja su teclado
       if (e.key === "ArrowRight") renditionRef.current?.next();
       if (e.key === "ArrowLeft") renditionRef.current?.prev();
       if (e.key === "Escape") onClose();
@@ -155,6 +171,7 @@ export function EpubReader({ book, onClose }: Props) {
       clearTimeout(saveTimer.current);
       window.removeEventListener("keydown", handleKeys);
       epubBook?.destroy();
+      epubBookRef.current = null;
       renditionRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -175,6 +192,40 @@ export function EpubReader({ book, onClose }: Props) {
     reloadNotes();
   }
 
+  function openFocusMode() {
+    focusIdxRef.current = spineIdxRef.current;
+    setFocusMode(true);
+  }
+
+  // Entrega el texto del siguiente capítulo (spine) para el modo enfocado.
+  const loadFocusWords = useCallback(async (): Promise<WordChunk | null> => {
+    const epubBook = epubBookRef.current;
+    if (!epubBook) return null;
+    const spine = epubBook.spine as unknown as {
+      get: (target: number) => SpineSection | null;
+    };
+    const idx = focusIdxRef.current;
+    const section = spine.get(idx);
+    if (!section) return null;
+    focusIdxRef.current = idx + 1;
+    const doc = await section.load(epubBook.load.bind(epubBook));
+    const text = doc.body?.textContent ?? "";
+    section.unload?.();
+    return { words: text.split(/\s+/).filter(Boolean), marker: idx };
+  }, []);
+
+  function closeFocusMode(lastMarker: number | null) {
+    setFocusMode(false);
+    if (lastMarker !== null && lastMarker !== spineIdxRef.current) {
+      const epubBook = epubBookRef.current;
+      const spine = epubBook?.spine as unknown as
+        | { get: (target: number) => SpineSection | null }
+        | undefined;
+      const section = spine?.get(lastMarker);
+      if (section) renditionRef.current?.display(section.href);
+    }
+  }
+
   if (error) {
     return (
       <div className="reader-error">
@@ -190,6 +241,7 @@ export function EpubReader({ book, onClose }: Props) {
         <button className="btn btn-ghost" onClick={onClose}>← Biblioteca</button>
         <span className="reader-title">{book.title}</span>
         <div className="reader-controls">
+          <button className="btn btn-ghost" title="Modo lector enfocado" onClick={openFocusMode}>⚡</button>
           <button className="btn btn-ghost" title="Marcar aquí" onClick={addBookmark}>🔖</button>
           <button
             className={`btn btn-ghost ${panelOpen ? "active" : ""}`}
@@ -237,6 +289,13 @@ export function EpubReader({ book, onClose }: Props) {
         )}
       </div>
       {toast && <div className="toast">{toast}</div>}
+      {focusMode && (
+        <FocusReader
+          title={book.title}
+          loadMore={loadFocusWords}
+          onClose={closeFocusMode}
+        />
+      )}
     </div>
   );
 }

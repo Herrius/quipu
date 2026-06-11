@@ -65,6 +65,16 @@ fn migrate(conn: &Connection) -> Result<(), rusqlite::Error> {
             ",
         )?;
     }
+    if version < 2 {
+        // managed = 1: el archivo del libro lo copió y gestiona Quipu
+        // (al quitarlo de la biblioteca, su copia también se elimina).
+        conn.execute_batch(
+            "
+            ALTER TABLE books ADD COLUMN managed INTEGER NOT NULL DEFAULT 0;
+            PRAGMA user_version = 2;
+            ",
+        )?;
+    }
     Ok(())
 }
 

@@ -40,6 +40,11 @@ pub fn run() {
             commands::delete_bookmark,
             commands::get_export_dir,
             commands::set_export_dir,
+            commands::delete_book_notes,
+            commands::remove_book,
+            commands::ingest_book,
+            commands::save_cover,
+            commands::update_book_meta,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

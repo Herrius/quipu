@@ -14,6 +14,7 @@ export interface Book {
   last_read: string | null;
   status: Status;
   rating: number | null;
+  managed: boolean;
 }
 
 export interface ImportResult {
@@ -83,6 +84,23 @@ export const api = {
 
   setExportDir: (path: string) =>
     invoke<void>("set_export_dir", { path }),
+
+  deleteBookNotes: (bookId: number) =>
+    invoke<void>("delete_book_notes", { bookId }),
+
+  removeBook: (bookId: number) =>
+    invoke<void>("remove_book", { bookId }),
+
+  ingestBook: (srcPath: string) =>
+    invoke<number>("ingest_book", { srcPath }),
+
+  saveCover: (bookId: number, jpeg: ArrayBuffer) =>
+    invoke<void>("save_cover", new Uint8Array(jpeg), {
+      headers: { "book-id": String(bookId) },
+    }),
+
+  updateBookMeta: (bookId: number, title: string, authors: string) =>
+    invoke<void>("update_book_meta", { bookId, title, authors }),
 };
 
 /** Pide al usuario la carpeta del vault donde van los subrayados. */

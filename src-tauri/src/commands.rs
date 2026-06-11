@@ -1,7 +1,8 @@
 use crate::{calibre, db, export, AppState};
 use serde::Serialize;
+use std::path::Path;
 use tauri::ipc::Response;
-use tauri::State;
+use tauri::{Manager, State};
 
 #[derive(Debug, Serialize)]
 pub struct Book {
@@ -15,6 +16,7 @@ pub struct Book {
     pub last_read: Option<String>,
     pub status: String,
     pub rating: Option<i64>,
+    pub managed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -76,7 +78,7 @@ pub fn list_books(state: State<AppState>) -> Result<Vec<Book>, String> {
             "SELECT b.id, b.title, b.authors, b.format,
                     b.cover_path IS NOT NULL,
                     COALESCE(p.percent, 0), p.location, p.updated_at,
-                    b.status, b.rating
+                    b.status, b.rating, b.managed
              FROM books b
              LEFT JOIN progress p ON p.book_id = b.id
              ORDER BY p.updated_at DESC NULLS LAST, b.title COLLATE NOCASE",
@@ -95,6 +97,7 @@ pub fn list_books(state: State<AppState>) -> Result<Vec<Book>, String> {
                 last_read: row.get(7)?,
                 status: row.get(8)?,
                 rating: row.get(9)?,
+                managed: row.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -299,9 +302,175 @@ pub fn get_export_dir(state: State<AppState>) -> Result<Option<String>, String> 
 
 #[tauri::command]
 pub fn set_export_dir(state: State<AppState>, path: String) -> Result<(), String> {
-    if !std::path::Path::new(&path).is_dir() {
+    if !Path::new(&path).is_dir() {
         return Err(format!("No es una carpeta válida: {path}"));
     }
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     db::set_setting(&conn, "export_dir", &path).map_err(|e| e.to_string())
+}
+
+/// Borra TODOS los subrayados y marcadores del libro y elimina su archivo
+/// de notas del vault. Irreversible: el frontend confirma antes de llamar.
+#[tauri::command]
+pub fn delete_book_notes(state: State<AppState>, book_id: i64) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    if let Some(path) = export::notes_file_path(&conn, book_id) {
+        let _ = std::fs::remove_file(path);
+    }
+    conn.execute("DELETE FROM highlights WHERE book_id = ?1", [book_id])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM bookmarks WHERE book_id = ?1", [book_id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Quita el libro de la biblioteca: progreso, notas y archivo del vault.
+/// Solo borra el archivo del libro (y su portada) si lo gestiona Quipu
+/// (managed = 1); los archivos de la biblioteca de Calibre nunca se tocan.
+#[tauri::command]
+pub fn remove_book(state: State<AppState>, book_id: i64) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    if let Some(path) = export::notes_file_path(&conn, book_id) {
+        let _ = std::fs::remove_file(path);
+    }
+    let (path, cover, managed): (String, Option<String>, bool) = conn
+        .query_row(
+            "SELECT path, cover_path, managed FROM books WHERE id = ?1",
+            [book_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    if managed {
+        let _ = std::fs::remove_file(&path);
+        if let Some(c) = cover {
+            let _ = std::fs::remove_file(c);
+        }
+        if let Some(dir) = Path::new(&path).parent() {
+            let _ = std::fs::remove_dir(dir); // solo si quedó vacía
+        }
+    }
+    conn.execute("DELETE FROM books WHERE id = ?1", [book_id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Agrega un libro suelto: lo copia a la carpeta gestionada por Quipu
+/// (`$APP_DATA/libros/{título}/`) y lo registra. Devuelve el id.
+#[tauri::command]
+pub fn ingest_book(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    src_path: String,
+) -> Result<i64, String> {
+    let src = Path::new(&src_path);
+    let ext = src
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .ok_or("El archivo no tiene extensión")?;
+    if ext != "pdf" && ext != "epub" {
+        return Err(format!("Formato no soportado: .{ext} (solo PDF o EPUB)"));
+    }
+    if !src.is_file() {
+        return Err(format!("No existe el archivo: {src_path}"));
+    }
+
+    let stem = src
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Sin título".into());
+    let title = export::sanitize(&stem.replace('_', " "));
+
+    let base = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("libros");
+
+    // Evitar pisar otro libro con el mismo nombre de archivo.
+    let mut dir = base.join(&title);
+    let mut n = 1;
+    let mut dest = dir.join(format!("{title}.{ext}"));
+    while dest.exists() && dest != src {
+        n += 1;
+        dir = base.join(format!("{title} ({n})"));
+        dest = dir.join(format!("{title}.{ext}"));
+    }
+
+    if dest != src {
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        std::fs::copy(src, &dest).map_err(|e| format!("No se pudo copiar: {e}"))?;
+    }
+
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO books (title, authors, path, format, managed)
+         VALUES (?1, '', ?2, ?3, 1)
+         ON CONFLICT(path) DO NOTHING",
+        rusqlite::params![title, dest.to_string_lossy(), ext],
+    )
+    .map_err(|e| e.to_string())?;
+    let id: i64 = conn
+        .query_row(
+            "SELECT id FROM books WHERE path = ?1",
+            [dest.to_string_lossy()],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+/// Guarda la portada (JPEG crudo en el body) generada por el frontend.
+#[tauri::command]
+pub fn save_cover(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    request: tauri::ipc::Request,
+) -> Result<(), String> {
+    let book_id: i64 = request
+        .headers()
+        .get("book-id")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok())
+        .ok_or("Falta el header book-id")?;
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("Se esperaba un body binario".into());
+    };
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("covers");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{book_id}.jpg"));
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE books SET cover_path = ?2 WHERE id = ?1",
+        rusqlite::params![book_id, path.to_string_lossy()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Actualiza título/autores con los metadatos reales (EPUB) tras la ingesta.
+#[tauri::command]
+pub fn update_book_meta(
+    state: State<AppState>,
+    book_id: i64,
+    title: String,
+    authors: String,
+) -> Result<(), String> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Ok(());
+    }
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE books SET title = ?2, authors = ?3 WHERE id = ?1",
+        rusqlite::params![book_id, title, authors.trim()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }

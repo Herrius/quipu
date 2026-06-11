@@ -5,7 +5,7 @@ use std::path::PathBuf;
 pub const NO_DIR_MSG: &str =
     "Configura la carpeta de subrayados (tu vault de Obsidian) primero";
 
-fn sanitize(name: &str) -> String {
+pub fn sanitize(name: &str) -> String {
     name.chars()
         .map(|c| match c {
             '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => ' ',
@@ -15,6 +15,18 @@ fn sanitize(name: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Ruta del archivo de notas del libro en el vault (None si no hay carpeta
+/// configurada). No comprueba que el archivo exista.
+pub fn notes_file_path(conn: &Connection, book_id: i64) -> Option<PathBuf> {
+    let dir = db::get_setting(conn, "export_dir")?;
+    let title: String = conn
+        .query_row("SELECT title FROM books WHERE id = ?1", [book_id], |row| {
+            row.get(0)
+        })
+        .ok()?;
+    Some(PathBuf::from(dir).join(format!("{} - Subrayados.md", sanitize(&title))))
 }
 
 /// Regenera el archivo markdown del libro en la carpeta del vault.

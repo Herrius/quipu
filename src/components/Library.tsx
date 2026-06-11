@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { ask, open } from "@tauri-apps/plugin-dialog";
 import { api, pickExportDir, type Book, type Status } from "../api";
+import { ingestWithCover } from "../ingest";
 
 const NEXT_STATUS: Record<Status, Status> = {
   por_leer: "leyendo",
@@ -71,6 +72,7 @@ export function Library({ books, onOpen, onChanged }: Props) {
   const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [detected, setDetected] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<number | null>(null);
 
   useEffect(() => {
     api.detectCalibreLibrary().then(setDetected);
@@ -118,6 +120,69 @@ export function Library({ books, onOpen, onChanged }: Props) {
   async function configureNotesDir() {
     const dir = await pickExportDir();
     if (dir) setStatus(`Subrayados se guardarán en: ${dir}`);
+  }
+
+  async function addBooks() {
+    const picked = await open({
+      multiple: true,
+      title: "Agregar libros (PDF o EPUB)",
+      filters: [{ name: "Libros", extensions: ["pdf", "epub"] }],
+    });
+    if (!picked) return;
+    const paths = Array.isArray(picked) ? picked : [picked];
+    setImporting(true);
+    let added = 0;
+    for (const p of paths) {
+      try {
+        await ingestWithCover(p);
+        added++;
+        setStatus(`Agregando… ${added}/${paths.length}`);
+      } catch (e) {
+        setStatus(String(e));
+      }
+    }
+    setImporting(false);
+    if (added > 0) setStatus(`${added} libro(s) agregados a la biblioteca.`);
+    onChanged();
+  }
+
+  async function clearBookNotes(book: Book) {
+    setMenuFor(null);
+    const hl = await api.listHighlights(book.id);
+    const bm = await api.listBookmarks(book.id);
+    const ok = await ask(
+      `Se borrarán ${hl.length} subrayado(s) y ${bm.length} marcador(es) de «${book.title}», y se eliminará su archivo de notas del vault de Obsidian.\n\nEsta acción no se puede deshacer.`,
+      {
+        title: "Borrar las notas del libro",
+        kind: "warning",
+        okLabel: "Borrar todo",
+        cancelLabel: "Cancelar",
+      },
+    );
+    if (!ok) return;
+    await api.deleteBookNotes(book.id);
+    setStatus(`Notas de «${book.title}» eliminadas.`);
+    onChanged();
+  }
+
+  async function removeBookFromLibrary(book: Book) {
+    setMenuFor(null);
+    const fileNote = book.managed
+      ? "También se borrará la copia del archivo que gestiona Quipu."
+      : "El archivo original del libro NO se toca (sigue en tu biblioteca de Calibre).";
+    const ok = await ask(
+      `«${book.title}» se quitará de Quipu: se pierden su progreso de lectura, subrayados y marcadores, y se elimina su archivo de notas del vault.\n\n${fileNote}\n\nEsta acción no se puede deshacer.`,
+      {
+        title: "Quitar de la biblioteca",
+        kind: "warning",
+        okLabel: "Quitar libro",
+        cancelLabel: "Cancelar",
+      },
+    );
+    if (!ok) return;
+    await api.removeBook(book.id);
+    setStatus(`«${book.title}» quitado de la biblioteca.`);
+    onChanged();
   }
 
   if (books.length === 0) {
@@ -172,8 +237,11 @@ export function Library({ books, onOpen, onChanged }: Props) {
         >
           📁
         </button>
+        <button className="btn btn-primary" disabled={importing} onClick={addBooks}>
+          {importing ? "Agregando…" : "＋ Agregar"}
+        </button>
         <button className="btn" disabled={importing} onClick={pickAndImport}>
-          {importing ? "Importando…" : "Reimportar"}
+          Reimportar
         </button>
       </header>
       {status && <p className="status">{status}</p>}
@@ -187,6 +255,25 @@ export function Library({ books, onOpen, onChanged }: Props) {
             onClick={() => onOpen(book)}
             onKeyDown={(e) => e.key === "Enter" && onOpen(book)}
           >
+            <div className="card-menu-anchor" onClick={(e) => e.stopPropagation()}>
+              <button
+                className="card-menu-btn"
+                title="Opciones del libro"
+                onClick={() => setMenuFor(menuFor === book.id ? null : book.id)}
+              >
+                ⋯
+              </button>
+              {menuFor === book.id && (
+                <div className="card-menu">
+                  <button onClick={() => clearBookNotes(book)}>
+                    🧹 Borrar notas…
+                  </button>
+                  <button onClick={() => removeBookFromLibrary(book)}>
+                    🗑 Quitar de la biblioteca…
+                  </button>
+                </div>
+              )}
+            </div>
             <Cover book={book} />
             {book.percent > 0 && (
               <div className="progress-track">
