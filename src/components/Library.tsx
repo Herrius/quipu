@@ -73,6 +73,8 @@ export function Library({ books, onOpen, onChanged }: Props) {
   const [status, setStatus] = useState<string | null>(null);
   const [detected, setDetected] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<number | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     api.detectCalibreLibrary().then(setDetected);
@@ -185,6 +187,48 @@ export function Library({ books, onOpen, onChanged }: Props) {
     onChanged();
   }
 
+  function toggleSelected(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelection() {
+    setSelecting(false);
+    setSelected(new Set());
+  }
+
+  async function removeSelectedBooks() {
+    const chosen = books.filter((b) => selected.has(b.id));
+    if (chosen.length === 0) return;
+    const managedCount = chosen.filter((b) => b.managed).length;
+    const names = chosen.slice(0, 6).map((b) => `• ${b.title}`).join("\n");
+    const more = chosen.length > 6 ? `\n… y ${chosen.length - 6} más.` : "";
+    const fileNote =
+      managedCount > 0
+        ? `Se borrarán también ${managedCount} copia(s) de archivo gestionadas por Quipu. Los archivos de Calibre NO se tocan.`
+        : "Los archivos originales (Calibre) NO se tocan.";
+    const ok = await ask(
+      `Se quitarán ${chosen.length} libro(s) de la biblioteca:\n\n${names}${more}\n\nSe pierde su progreso de lectura, subrayados y marcadores, y se eliminan sus archivos de notas del vault. ${fileNote}\n\nEsta acción no se puede deshacer.`,
+      {
+        title: "Quitar libros seleccionados",
+        kind: "warning",
+        okLabel: `Quitar ${chosen.length} libro(s)`,
+        cancelLabel: "Cancelar",
+      },
+    );
+    if (!ok) return;
+    for (const b of chosen) {
+      await api.removeBook(b.id);
+    }
+    setStatus(`${chosen.length} libro(s) quitados de la biblioteca.`);
+    exitSelection();
+    onChanged();
+  }
+
   if (books.length === 0) {
     return (
       <div className="onboarding">
@@ -230,50 +274,86 @@ export function Library({ books, onOpen, onChanged }: Props) {
             </button>
           ))}
         </nav>
-        <button
-          className="btn btn-ghost"
-          title="Carpeta de Obsidian para subrayados"
-          onClick={configureNotesDir}
-        >
-          📁
-        </button>
-        <button className="btn btn-primary" disabled={importing} onClick={addBooks}>
-          {importing ? "Agregando…" : "＋ Agregar"}
-        </button>
-        <button className="btn" disabled={importing} onClick={pickAndImport}>
-          Reimportar
-        </button>
+        {selecting ? (
+          <>
+            <span className="select-count">{selected.size} seleccionado(s)</span>
+            <button
+              className="btn"
+              onClick={() => setSelected(new Set(filtered.map((b) => b.id)))}
+            >
+              Todos
+            </button>
+            <button
+              className="btn btn-danger"
+              disabled={selected.size === 0}
+              onClick={removeSelectedBooks}
+            >
+              🗑 Quitar ({selected.size})…
+            </button>
+            <button className="btn" onClick={exitSelection}>Cancelar</button>
+          </>
+        ) : (
+          <>
+            <button
+              className="btn btn-ghost"
+              title="Carpeta de Obsidian para subrayados"
+              onClick={configureNotesDir}
+            >
+              📁
+            </button>
+            <button className="btn" onClick={() => setSelecting(true)}>
+              ☑ Seleccionar
+            </button>
+            <button className="btn btn-primary" disabled={importing} onClick={addBooks}>
+              {importing ? "Agregando…" : "＋ Agregar"}
+            </button>
+            <button className="btn" disabled={importing} onClick={pickAndImport}>
+              Reimportar
+            </button>
+          </>
+        )}
       </header>
       {status && <p className="status">{status}</p>}
       <div className="grid">
         {filtered.map((book) => (
           <div
             key={book.id}
-            className="card"
+            className={`card ${selecting && selected.has(book.id) ? "card-selected" : ""}`}
             role="button"
             tabIndex={0}
-            onClick={() => onOpen(book)}
-            onKeyDown={(e) => e.key === "Enter" && onOpen(book)}
+            onClick={() => (selecting ? toggleSelected(book.id) : onOpen(book))}
+            onKeyDown={(e) =>
+              e.key === "Enter" &&
+              (selecting ? toggleSelected(book.id) : onOpen(book))
+            }
           >
-            <div className="card-menu-anchor" onClick={(e) => e.stopPropagation()}>
-              <button
-                className="card-menu-btn"
-                title="Opciones del libro"
-                onClick={() => setMenuFor(menuFor === book.id ? null : book.id)}
+            {selecting ? (
+              <span
+                className={`select-dot ${selected.has(book.id) ? "on" : ""}`}
               >
-                ⋯
-              </button>
-              {menuFor === book.id && (
-                <div className="card-menu">
-                  <button onClick={() => clearBookNotes(book)}>
-                    🧹 Borrar notas…
-                  </button>
-                  <button onClick={() => removeBookFromLibrary(book)}>
-                    🗑 Quitar de la biblioteca…
-                  </button>
-                </div>
-              )}
-            </div>
+                {selected.has(book.id) ? "✓" : ""}
+              </span>
+            ) : (
+              <div className="card-menu-anchor" onClick={(e) => e.stopPropagation()}>
+                <button
+                  className="card-menu-btn"
+                  title="Opciones del libro"
+                  onClick={() => setMenuFor(menuFor === book.id ? null : book.id)}
+                >
+                  ⋯
+                </button>
+                {menuFor === book.id && (
+                  <div className="card-menu">
+                    <button onClick={() => clearBookNotes(book)}>
+                      🧹 Borrar notas…
+                    </button>
+                    <button onClick={() => removeBookFromLibrary(book)}>
+                      🗑 Quitar de la biblioteca…
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             <Cover book={book} />
             {book.percent > 0 && (
               <div className="progress-track">

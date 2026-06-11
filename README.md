@@ -12,6 +12,10 @@ Biblioteca y lector personal de PDF/EPUB. Reemplazo de Calibre como *lector*: in
 - **pdf.js** — render de PDF (scroll continuo, render perezoso por página)
 - **epub.js** — render de EPUB (paginado, temas, tamaño de letra)
 
+## Instalación
+
+Ver **[INSTALL.md](INSTALL.md)** — instalar, abrir, actualizar y desinstalar en Linux (Arch) y Windows. Resumen Linux: `bun run tauri build && ./install.sh` y buscar «Quipu» en el menú de aplicaciones.
+
 ## Desarrollo
 
 ```bash

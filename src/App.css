@@ -629,6 +629,51 @@ button {
   background: var(--bg-hover);
 }
 
+/* ---------- Selección múltiple ---------- */
+
+.btn-danger {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #d4604a;
+}
+
+.select-count {
+  font-size: 0.85rem;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.card-selected .cover {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+
+.select-dot {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  z-index: 3;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 2px solid var(--fg-dim);
+  background: rgb(22 22 29 / 0.75);
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  color: #fff;
+}
+
+.select-dot.on {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+  color: #16161d;
+}
+
 /* ---------- Modo lector enfocado (RSVP) ---------- */
 
 .focus-overlay {
