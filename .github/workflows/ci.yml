@@ -52,10 +52,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Gitleaks (secretos en el historial)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Gitleaks (secretos en todo el historial)
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \
+            | tar xz gitleaks
+          ./gitleaks git . --redact --verbose
 
       - name: Semgrep (SAST)
         run: |
