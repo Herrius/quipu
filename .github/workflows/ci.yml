@@ -47,6 +47,9 @@ jobs:
   security:
     name: Seguridad (SAST + deps + secretos)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write # rustsec/audit-check publica sus resultados como check run
     steps:
       - uses: actions/checkout@v4
         with:
