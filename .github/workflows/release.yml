@@ -58,7 +58,7 @@ jobs:
           format: spdx-json
           output-file: quipu-sbom.spdx.json
       - name: Adjuntar SBOM al release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: true
           files: quipu-sbom.spdx.json
