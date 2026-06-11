@@ -1,0 +1,363 @@
+:root {
+  --bg: #16161d;
+  --bg-raised: #1f1f29;
+  --bg-hover: #2a2a38;
+  --fg: #d8d4c8;
+  --fg-dim: #8a8778;
+  --accent: #c0533f;
+  --accent-soft: #e0a458;
+  --border: #2e2e3a;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.splash {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: 2rem;
+  letter-spacing: 0.3em;
+  color: var(--fg-dim);
+}
+
+/* ---------- Onboarding ---------- */
+
+.onboarding {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.onboarding h1 {
+  font-size: 3rem;
+  margin: 0;
+  letter-spacing: 0.2em;
+}
+
+.onboarding p {
+  color: var(--fg-dim);
+  max-width: 40ch;
+}
+
+.detected-path {
+  color: var(--fg-dim);
+  font-size: 0.8rem;
+  background: var(--bg-raised);
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+}
+
+/* ---------- Botones ---------- */
+
+.btn {
+  background: var(--bg-raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #d4604a;
+}
+
+.btn-ghost {
+  background: transparent;
+  border: none;
+  padding: 0.35rem 0.6rem;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-radius: 6px;
+}
+
+.status {
+  color: var(--fg-dim);
+  text-align: center;
+  margin: 0.5rem 0;
+}
+
+/* ---------- Biblioteca ---------- */
+
+.library {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.library-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.8rem 1.4rem;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 2;
+}
+
+.library-header h1 {
+  font-size: 1.2rem;
+  margin: 0;
+  letter-spacing: 0.25em;
+  color: var(--accent-soft);
+}
+
+.search {
+  flex: 1;
+  max-width: 28rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+  padding: 0.5rem 0.9rem;
+  outline: none;
+}
+
+.search:focus {
+  border-color: var(--accent-soft);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1.2rem;
+  padding: 1.4rem;
+  overflow-y: auto;
+}
+
+.card {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  color: var(--fg);
+}
+
+.card:hover .cover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+
+.cover {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--bg-raised);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cover-placeholder {
+  display: grid;
+  place-items: center;
+  padding: 0.8rem;
+  font-size: 0.85rem;
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  text-align: center;
+  overflow: hidden;
+}
+
+.progress-track {
+  height: 3px;
+  background: var(--bg-raised);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent-soft);
+}
+
+.card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.card-title {
+  font-size: 0.85rem;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-authors {
+  font-size: 0.75rem;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip {
+  font-size: 0.65rem;
+  color: var(--fg-dim);
+  letter-spacing: 0.08em;
+}
+
+/* ---------- Lector (común) ---------- */
+
+.reader {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.reader-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.4rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  z-index: 2;
+}
+
+.reader-title {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.reader-pos {
+  font-size: 0.85rem;
+  color: var(--fg-dim);
+  min-width: 5.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-error {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+/* ---------- Lector PDF ---------- */
+
+.pdf-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  background: #101016;
+}
+
+.pdf-page {
+  background: #fff;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.45);
+  flex-shrink: 0;
+}
+
+.pdf-page canvas {
+  display: block;
+}
+
+/* ---------- Lector EPUB ---------- */
+
+.epub-stage {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.epub-view {
+  flex: 1;
+  min-width: 0;
+}
+
+.epub-theme-dark .epub-stage { background: #16161d; }
+.epub-theme-sepia .epub-stage { background: #f4ecd8; }
+.epub-theme-light .epub-stage { background: #ffffff; }
+
+.epub-nav {
+  width: 3rem;
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 2rem;
+}
+
+.epub-nav:hover {
+  color: var(--fg);
+}
+
+.theme-dot {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+}
+
+.theme-dot.active {
+  border-color: var(--accent-soft);
+}
+
+.theme-dot-dark { background: #16161d; border: 2px solid var(--border); }
+.theme-dot-dark.active { border-color: var(--accent-soft); }
+.theme-dot-sepia { background: #f4ecd8; }
+.theme-dot-light { background: #ffffff; }
