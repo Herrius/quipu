@@ -19,7 +19,7 @@ jobs:
             args: ""
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Dependencias de sistema (Linux)
         if: matrix.platform == 'ubuntu-latest'
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Generar SBOM (SPDX)
         uses: anchore/sbom-action@v0
         with:
