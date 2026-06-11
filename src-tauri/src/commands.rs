@@ -1,4 +1,4 @@
-use crate::{calibre, db, AppState};
+use crate::{calibre, db, export, AppState};
 use serde::Serialize;
 use tauri::ipc::Response;
 use tauri::State;
@@ -13,6 +13,25 @@ pub struct Book {
     pub percent: f64,
     pub location: Option<String>,
     pub last_read: Option<String>,
+    pub status: String,
+    pub rating: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Highlight {
+    pub id: i64,
+    pub location: String,
+    pub page: Option<i64>,
+    pub text: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Bookmark {
+    pub id: i64,
+    pub location: String,
+    pub page: Option<i64>,
+    pub created_at: String,
 }
 
 /// Lee un archivo SOLO si su ruta está registrada en nuestra DB.
@@ -56,7 +75,8 @@ pub fn list_books(state: State<AppState>) -> Result<Vec<Book>, String> {
         .prepare(
             "SELECT b.id, b.title, b.authors, b.format,
                     b.cover_path IS NOT NULL,
-                    COALESCE(p.percent, 0), p.location, p.updated_at
+                    COALESCE(p.percent, 0), p.location, p.updated_at,
+                    b.status, b.rating
              FROM books b
              LEFT JOIN progress p ON p.book_id = b.id
              ORDER BY p.updated_at DESC NULLS LAST, b.title COLLATE NOCASE",
@@ -73,6 +93,8 @@ pub fn list_books(state: State<AppState>) -> Result<Vec<Book>, String> {
                 percent: row.get(5)?,
                 location: row.get(6)?,
                 last_read: row.get(7)?,
+                status: row.get(8)?,
+                rating: row.get(9)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -120,4 +142,166 @@ pub fn save_progress(
 pub fn get_calibre_library(state: State<AppState>) -> Result<Option<String>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     Ok(db::get_setting(&conn, "calibre_library"))
+}
+
+#[tauri::command]
+pub fn set_status(state: State<AppState>, book_id: i64, status: String) -> Result<(), String> {
+    if !["por_leer", "leyendo", "leido"].contains(&status.as_str()) {
+        return Err(format!("Estado inválido: {status}"));
+    }
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE books SET status = ?2 WHERE id = ?1",
+        rusqlite::params![book_id, status],
+    )
+    .map_err(|e| e.to_string())?;
+    // Refleja el cambio en el frontmatter del archivo del vault si ya existe.
+    let _ = export::export_book(&conn, book_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_rating(
+    state: State<AppState>,
+    book_id: i64,
+    rating: Option<i64>,
+) -> Result<(), String> {
+    if let Some(r) = rating {
+        if !(1..=5).contains(&r) {
+            return Err(format!("Puntuación inválida: {r}"));
+        }
+    }
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE books SET rating = ?2 WHERE id = ?1",
+        rusqlite::params![book_id, rating],
+    )
+    .map_err(|e| e.to_string())?;
+    let _ = export::export_book(&conn, book_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn add_highlight(
+    state: State<AppState>,
+    book_id: i64,
+    location: String,
+    page: Option<i64>,
+    text: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    // Validar la carpeta ANTES de insertar: si falta, el frontend la pide
+    // y reintenta sin dejar un subrayado duplicado.
+    db::get_setting(&conn, "export_dir").ok_or(export::NO_DIR_MSG)?;
+    conn.execute(
+        "INSERT INTO highlights (book_id, location, page, text) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![book_id, location, page, text.trim()],
+    )
+    .map_err(|e| e.to_string())?;
+    export::export_book(&conn, book_id)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_highlights(state: State<AppState>, book_id: i64) -> Result<Vec<Highlight>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, location, page, text, created_at FROM highlights
+             WHERE book_id = ?1 ORDER BY COALESCE(page, 999999), created_at",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([book_id], |row| {
+            Ok(Highlight {
+                id: row.get(0)?,
+                location: row.get(1)?,
+                page: row.get(2)?,
+                text: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .flatten()
+        .collect();
+    Ok(rows)
+}
+
+#[tauri::command]
+pub fn delete_highlight(state: State<AppState>, highlight_id: i64) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let book_id: i64 = conn
+        .query_row(
+            "SELECT book_id FROM highlights WHERE id = ?1",
+            [highlight_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM highlights WHERE id = ?1", [highlight_id])
+        .map_err(|e| e.to_string())?;
+    let _ = export::export_book(&conn, book_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn add_bookmark(
+    state: State<AppState>,
+    book_id: i64,
+    location: String,
+    page: Option<i64>,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO bookmarks (book_id, location, page) VALUES (?1, ?2, ?3)",
+        rusqlite::params![book_id, location, page],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_bookmarks(state: State<AppState>, book_id: i64) -> Result<Vec<Bookmark>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, location, page, created_at FROM bookmarks
+             WHERE book_id = ?1 ORDER BY created_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([book_id], |row| {
+            Ok(Bookmark {
+                id: row.get(0)?,
+                location: row.get(1)?,
+                page: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .flatten()
+        .collect();
+    Ok(rows)
+}
+
+#[tauri::command]
+pub fn delete_bookmark(state: State<AppState>, bookmark_id: i64) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM bookmarks WHERE id = ?1", [bookmark_id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_export_dir(state: State<AppState>) -> Result<Option<String>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    Ok(db::get_setting(&conn, "export_dir"))
+}
+
+#[tauri::command]
+pub fn set_export_dir(state: State<AppState>, path: String) -> Result<(), String> {
+    if !std::path::Path::new(&path).is_dir() {
+        return Err(format!("No es una carpeta válida: {path}"));
+    }
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::set_setting(&conn, "export_dir", &path).map_err(|e| e.to_string())
 }

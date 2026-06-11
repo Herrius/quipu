@@ -243,6 +243,72 @@ button {
   letter-spacing: 0.08em;
 }
 
+.card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem;
+  margin-top: 0.1rem;
+}
+
+.chip-status {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.15rem 0.5rem;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.chip-status:hover {
+  border-color: var(--accent-soft);
+}
+
+.chip-leyendo { color: var(--accent-soft); }
+.chip-leido { color: #7cb87c; }
+
+.stars {
+  display: flex;
+  gap: 1px;
+}
+
+.star {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.85rem;
+  color: var(--border);
+  line-height: 1;
+}
+
+.star.on {
+  color: var(--accent-soft);
+}
+
+.star:hover {
+  color: var(--accent-soft);
+}
+
+.filters {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.pill {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg-dim);
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.pill.active {
+  background: var(--bg-raised);
+  color: var(--fg);
+  border-color: var(--accent-soft);
+}
+
 /* ---------- Lector (común) ---------- */
 
 .reader {
@@ -361,3 +427,146 @@ button {
 .theme-dot-dark.active { border-color: var(--accent-soft); }
 .theme-dot-sepia { background: #f4ecd8; }
 .theme-dot-light { background: #ffffff; }
+
+/* ---------- Cuerpo del lector + panel de notas ---------- */
+
+.reader-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.reader-panel {
+  width: 320px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  overflow-y: auto;
+  padding: 0.8rem;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  margin-bottom: 0.6rem;
+}
+
+.reader-panel h3 {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  color: var(--fg-dim);
+  margin: 0.8rem 0 0.4rem;
+}
+
+.panel-empty {
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+}
+
+.panel-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.2rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0.3rem 0;
+}
+
+.panel-jump {
+  flex: 1;
+  background: none;
+  border: none;
+  text-align: left;
+  color: var(--fg);
+  font-size: 0.8rem;
+  padding: 0.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.panel-jump:hover {
+  background: var(--bg-hover);
+  border-radius: 6px;
+}
+
+.panel-loc {
+  color: var(--accent-soft);
+  font-size: 0.7rem;
+}
+
+.panel-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--fg-dim);
+}
+
+.panel-delete {
+  font-size: 0.75rem;
+}
+
+.btn-ghost.active {
+  background: var(--bg-hover);
+  border-radius: 6px;
+}
+
+/* ---------- Popup de subrayado + toast ---------- */
+
+.highlight-popup {
+  position: fixed;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.5);
+  z-index: 20;
+}
+
+.toast {
+  position: fixed;
+  bottom: 1.2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  z-index: 30;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.5);
+}
+
+/* ---------- Capa de texto de pdf.js (selección) ---------- */
+
+.pdf-page {
+  position: relative;
+}
+
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 1;
+}
+
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.textLayer ::selection {
+  background: rgba(224, 164, 88, 0.45);
+}

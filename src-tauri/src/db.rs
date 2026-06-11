@@ -32,7 +32,40 @@ pub fn open(db_path: &Path) -> Result<Connection, rusqlite::Error> {
         );
         ",
     )?;
+    migrate(&conn)?;
     Ok(conn)
+}
+
+fn migrate(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version < 1 {
+        conn.execute_batch(
+            "
+            ALTER TABLE books ADD COLUMN status TEXT NOT NULL DEFAULT 'por_leer';
+            ALTER TABLE books ADD COLUMN rating INTEGER;
+
+            CREATE TABLE highlights (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                location TEXT NOT NULL,
+                page INTEGER,
+                text TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE bookmarks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                location TEXT NOT NULL,
+                page INTEGER,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            PRAGMA user_version = 1;
+            ",
+        )?;
+    }
+    Ok(())
 }
 
 pub fn get_setting(conn: &Connection, key: &str) -> Option<String> {

@@ -27,6 +27,13 @@ export default function App() {
     refresh();
   }, [refresh]);
 
+  const openBook = useCallback((book: Book) => {
+    if (book.status === "por_leer") {
+      api.setStatus(book.id, "leyendo").catch(() => {});
+    }
+    setCurrent(book);
+  }, []);
+
   if (books === null) {
     return <div className="splash">Quipu</div>;
   }
@@ -43,5 +50,5 @@ export default function App() {
     );
   }
 
-  return <Library books={books} onOpen={setCurrent} onChanged={refresh} />;
+  return <Library books={books} onOpen={openBook} onChanged={refresh} />;
 }

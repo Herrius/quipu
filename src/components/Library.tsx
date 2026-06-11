@@ -1,6 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, type Book } from "../api";
+import { api, pickExportDir, type Book, type Status } from "../api";
+
+const NEXT_STATUS: Record<Status, Status> = {
+  por_leer: "leyendo",
+  leyendo: "leido",
+  leido: "por_leer",
+};
+
+const STATUS_LABEL: Record<Status, string> = {
+  por_leer: "Por leer",
+  leyendo: "Leyendo",
+  leido: "Leído",
+};
 
 function Cover({ book }: { book: Book }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -25,6 +37,28 @@ function Cover({ book }: { book: Book }) {
   );
 }
 
+function Stars({ book, onChanged }: { book: Book; onChanged: () => void }) {
+  async function rate(e: React.MouseEvent, value: number) {
+    e.stopPropagation();
+    await api.setRating(book.id, book.rating === value ? null : value);
+    onChanged();
+  }
+  return (
+    <span className="stars" onClick={(e) => e.stopPropagation()}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          className={`star ${book.rating && n <= book.rating ? "on" : ""}`}
+          title={`${n}/5`}
+          onClick={(e) => rate(e, n)}
+        >
+          ★
+        </button>
+      ))}
+    </span>
+  );
+}
+
 interface Props {
   books: Book[];
   onOpen: (book: Book) => void;
@@ -33,6 +67,7 @@ interface Props {
 
 export function Library({ books, onOpen, onChanged }: Props) {
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Status | "todos">("todos");
   const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [detected, setDetected] = useState<string | null>(null);
@@ -43,13 +78,14 @@ export function Library({ books, onOpen, onChanged }: Props) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return books;
     return books.filter(
       (b) =>
-        b.title.toLowerCase().includes(q) ||
-        b.authors.toLowerCase().includes(q),
+        (filter === "todos" || b.status === filter) &&
+        (!q ||
+          b.title.toLowerCase().includes(q) ||
+          b.authors.toLowerCase().includes(q)),
     );
-  }, [books, query]);
+  }, [books, query, filter]);
 
   async function importFrom(path: string) {
     setImporting(true);
@@ -71,6 +107,17 @@ export function Library({ books, onOpen, onChanged }: Props) {
   async function pickAndImport() {
     const dir = await open({ directory: true, title: "Elige tu biblioteca de Calibre" });
     if (typeof dir === "string") await importFrom(dir);
+  }
+
+  async function cycleStatus(e: React.MouseEvent, book: Book) {
+    e.stopPropagation();
+    await api.setStatus(book.id, NEXT_STATUS[book.status]);
+    onChanged();
+  }
+
+  async function configureNotesDir() {
+    const dir = await pickExportDir();
+    if (dir) setStatus(`Subrayados se guardarán en: ${dir}`);
   }
 
   if (books.length === 0) {
@@ -107,6 +154,24 @@ export function Library({ books, onOpen, onChanged }: Props) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        <nav className="filters">
+          {(["todos", "leyendo", "por_leer", "leido"] as const).map((f) => (
+            <button
+              key={f}
+              className={`pill ${filter === f ? "active" : ""}`}
+              onClick={() => setFilter(f)}
+            >
+              {f === "todos" ? "Todos" : STATUS_LABEL[f]}
+            </button>
+          ))}
+        </nav>
+        <button
+          className="btn btn-ghost"
+          title="Carpeta de Obsidian para subrayados"
+          onClick={configureNotesDir}
+        >
+          📁
+        </button>
         <button className="btn" disabled={importing} onClick={pickAndImport}>
           {importing ? "Importando…" : "Reimportar"}
         </button>
@@ -114,7 +179,14 @@ export function Library({ books, onOpen, onChanged }: Props) {
       {status && <p className="status">{status}</p>}
       <div className="grid">
         {filtered.map((book) => (
-          <button key={book.id} className="card" onClick={() => onOpen(book)}>
+          <div
+            key={book.id}
+            className="card"
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpen(book)}
+            onKeyDown={(e) => e.key === "Enter" && onOpen(book)}
+          >
             <Cover book={book} />
             {book.percent > 0 && (
               <div className="progress-track">
@@ -127,16 +199,25 @@ export function Library({ books, onOpen, onChanged }: Props) {
             <div className="card-meta">
               <span className="card-title">{book.title}</span>
               <span className="card-authors">{book.authors}</span>
-              <span className={`chip chip-${book.format}`}>
-                {book.format.toUpperCase()}
-                {book.percent > 0 && ` · ${Math.round(book.percent * 100)}%`}
-              </span>
+              <div className="card-actions">
+                <button
+                  className={`chip chip-status chip-${book.status}`}
+                  title="Cambiar estado"
+                  onClick={(e) => cycleStatus(e, book)}
+                >
+                  {STATUS_LABEL[book.status]}
+                  {book.percent > 0 &&
+                    book.status !== "leido" &&
+                    ` · ${Math.round(book.percent * 100)}%`}
+                </button>
+                <Stars book={book} onChanged={onChanged} />
+              </div>
             </div>
-          </button>
+          </div>
         ))}
       </div>
       {filtered.length === 0 && (
-        <p className="status">Nada coincide con «{query}».</p>
+        <p className="status">Nada coincide con el filtro.</p>
       )}
     </div>
   );

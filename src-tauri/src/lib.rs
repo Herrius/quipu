@@ -1,6 +1,7 @@
 mod calibre;
 mod commands;
 mod db;
+mod export;
 
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -29,6 +30,16 @@ pub fn run() {
             commands::read_cover,
             commands::save_progress,
             commands::get_calibre_library,
+            commands::set_status,
+            commands::set_rating,
+            commands::add_highlight,
+            commands::list_highlights,
+            commands::delete_highlight,
+            commands::add_bookmark,
+            commands::list_bookmarks,
+            commands::delete_bookmark,
+            commands::get_export_dir,
+            commands::set_export_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

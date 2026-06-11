@@ -1,8 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
+import { TextLayer } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { api, type Book } from "../api";
+import {
+  addHighlightEnsuringDir,
+  api,
+  type Book,
+  type Bookmark,
+  type Highlight,
+} from "../api";
+import { ReaderPanel } from "./ReaderPanel";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -40,6 +48,7 @@ function PdfPage({ doc, pageNum, width, height, scale }: PageProps) {
     }
     let cancelled = false;
     let task: RenderTask | undefined;
+    let textLayer: TextLayer | undefined;
     (async () => {
       const page = await doc.getPage(pageNum);
       if (cancelled) return;
@@ -55,17 +64,45 @@ function PdfPage({ doc, pageNum, width, height, scale }: PageProps) {
         transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
       });
       await task.promise;
-      if (!cancelled && ref.current) ref.current.replaceChildren(canvas);
+      if (cancelled || !ref.current) return;
+
+      // Capa de texto transparente encima del canvas: habilita seleccionar
+      // texto (y por tanto subrayar) sobre el render.
+      const textDiv = document.createElement("div");
+      textDiv.className = "textLayer";
+      textLayer = new TextLayer({
+        textContentSource: page.streamTextContent(),
+        container: textDiv,
+        viewport,
+      });
+      await textLayer.render();
+      if (cancelled || !ref.current) return;
+      ref.current.replaceChildren(canvas, textDiv);
     })().catch(() => {
       /* render cancelado al hacer scroll/zoom: esperado */
     });
     return () => {
       cancelled = true;
       task?.cancel();
+      textLayer?.cancel();
     };
   }, [visible, doc, pageNum, scale]);
 
-  return <div className="pdf-page" ref={ref} style={{ width, height }} />;
+  return (
+    <div
+      className="pdf-page"
+      ref={ref}
+      data-page={pageNum}
+      style={{ width, height, "--scale-factor": scale } as React.CSSProperties}
+    />
+  );
+}
+
+interface Popup {
+  x: number;
+  y: number;
+  text: string;
+  page: number;
 }
 
 interface Props {
@@ -83,9 +120,29 @@ export function PdfReader({ book, onClose }: Props) {
     return Number.isInteger(n) && n > 0 ? n : 1;
   });
   const [error, setError] = useState<string | null>(null);
+  const [popup, setPopup] = useState<Popup | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
   const restored = useRef(false);
   const pageRef = useRef(page);
   pageRef.current = page;
+
+  const reloadNotes = useCallback(async () => {
+    setHighlights(await api.listHighlights(book.id));
+    setBookmarks(await api.listBookmarks(book.id));
+  }, [book.id]);
+
+  useEffect(() => {
+    reloadNotes();
+  }, [reloadNotes]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   useEffect(() => {
     let active = true;
@@ -115,17 +172,26 @@ export function PdfReader({ book, onClose }: Props) {
     if (!baseSize || !containerRef.current) return 1;
     const available = containerRef.current.clientWidth - 48;
     return (available / baseSize.w) * zoom;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseSize, zoom, doc]);
 
   const pageW = baseSize ? baseSize.w * scale : 0;
   const pageH = baseSize ? baseSize.h * scale : 0;
 
+  const scrollToPage = useCallback(
+    (p: number) => {
+      containerRef.current?.scrollTo({ top: (p - 1) * (pageH + PAGE_GAP) });
+    },
+    [pageH],
+  );
+
   // Restaurar la posición guardada una sola vez, cuando ya hay layout.
   useEffect(() => {
     if (!doc || !pageH || restored.current) return;
     restored.current = true;
-    containerRef.current?.scrollTo({ top: (page - 1) * (pageH + PAGE_GAP) });
-  }, [doc, pageH, page]);
+    scrollToPage(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, pageH]);
 
   // Guardar progreso con debounce.
   useEffect(() => {
@@ -137,6 +203,7 @@ export function PdfReader({ book, onClose }: Props) {
   }, [page, doc, book.id]);
 
   function onScroll() {
+    setPopup(null);
     const el = containerRef.current;
     if (!el || !pageH) return;
     const center = el.scrollTop + el.clientHeight / 2;
@@ -145,6 +212,55 @@ export function PdfReader({ book, onClose }: Props) {
       Math.max(1, Math.floor(center / (pageH + PAGE_GAP)) + 1),
     );
     if (p !== pageRef.current) setPage(p);
+  }
+
+  function onMouseUp() {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) {
+      setPopup(null);
+      return;
+    }
+    const text = sel.toString().trim();
+    if (!text) {
+      setPopup(null);
+      return;
+    }
+    const anchor = sel.anchorNode;
+    const el = anchor instanceof Element ? anchor : anchor?.parentElement;
+    const pageEl = el?.closest("[data-page]");
+    if (!pageEl) return;
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    setPopup({
+      x: rect.left + rect.width / 2,
+      y: rect.top,
+      text,
+      page: Number(pageEl.getAttribute("data-page")),
+    });
+  }
+
+  async function saveHighlight() {
+    if (!popup) return;
+    const ok = await addHighlightEnsuringDir(
+      book.id,
+      String(popup.page),
+      popup.page,
+      popup.text,
+    ).catch((e) => {
+      setToast(String(e));
+      return false;
+    });
+    if (ok) {
+      window.getSelection()?.removeAllRanges();
+      setToast("Subrayado guardado en tu vault ✓");
+      reloadNotes();
+    }
+    setPopup(null);
+  }
+
+  async function addBookmark() {
+    await api.addBookmark(book.id, String(page), page);
+    setToast(`Marcador en p. ${page} ✓`);
+    reloadNotes();
   }
 
   useEffect(() => {
@@ -170,6 +286,14 @@ export function PdfReader({ book, onClose }: Props) {
         <button className="btn btn-ghost" onClick={onClose}>← Biblioteca</button>
         <span className="reader-title">{book.title}</span>
         <div className="reader-controls">
+          <button className="btn btn-ghost" title="Marcar aquí" onClick={addBookmark}>🔖</button>
+          <button
+            className={`btn btn-ghost ${panelOpen ? "active" : ""}`}
+            title="Notas del libro"
+            onClick={() => setPanelOpen((o) => !o)}
+          >
+            📑
+          </button>
           <button className="btn btn-ghost" onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))}>−</button>
           <button className="btn btn-ghost" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
           <button className="btn btn-ghost" onClick={() => setZoom((z) => Math.min(3, z + 0.1))}>+</button>
@@ -178,22 +302,56 @@ export function PdfReader({ book, onClose }: Props) {
           </span>
         </div>
       </header>
-      <div className="pdf-scroll" ref={containerRef} onScroll={onScroll}>
-        {doc && baseSize ? (
-          Array.from({ length: doc.numPages }, (_, i) => (
-            <PdfPage
-              key={`${i + 1}-${scale.toFixed(3)}`}
-              doc={doc}
-              pageNum={i + 1}
-              width={pageW}
-              height={pageH}
-              scale={scale}
-            />
-          ))
-        ) : (
-          <p className="status">Cargando…</p>
+      <div className="reader-body">
+        <div
+          className="pdf-scroll"
+          ref={containerRef}
+          onScroll={onScroll}
+          onMouseUp={onMouseUp}
+        >
+          {doc && baseSize ? (
+            Array.from({ length: doc.numPages }, (_, i) => (
+              <PdfPage
+                key={`${i + 1}-${scale.toFixed(3)}`}
+                doc={doc}
+                pageNum={i + 1}
+                width={pageW}
+                height={pageH}
+                scale={scale}
+              />
+            ))
+          ) : (
+            <p className="status">Cargando…</p>
+          )}
+        </div>
+        {panelOpen && (
+          <ReaderPanel
+            highlights={highlights}
+            bookmarks={bookmarks}
+            onJump={(loc) => scrollToPage(Number(loc) || 1)}
+            onDeleteHighlight={async (id) => {
+              await api.deleteHighlight(id);
+              reloadNotes();
+            }}
+            onDeleteBookmark={async (id) => {
+              await api.deleteBookmark(id);
+              reloadNotes();
+            }}
+            onClose={() => setPanelOpen(false)}
+          />
         )}
       </div>
+      {popup && (
+        <button
+          className="highlight-popup"
+          style={{ left: popup.x, top: popup.y - 40 }}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={saveHighlight}
+        >
+          ✏️ Subrayar
+        </button>
+      )}
+      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }
