@@ -80,6 +80,21 @@ export function Library({ books, onOpen, onChanged }: Props) {
     api.detectCalibreLibrary().then(setDetected);
   }, []);
 
+  // Cerrar el menú contextual al hacer clic fuera o con Escape.
+  useEffect(() => {
+    if (menuFor === null) return;
+    const close = () => setMenuFor(null);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuFor]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return books.filter(
@@ -322,6 +337,12 @@ export function Library({ books, onOpen, onChanged }: Props) {
             role="button"
             tabIndex={0}
             onClick={() => (selecting ? toggleSelected(book.id) : onOpen(book))}
+            onContextMenu={(e) => {
+              if (selecting) return;
+              e.preventDefault();
+              e.stopPropagation();
+              setMenuFor(menuFor === book.id ? null : book.id);
+            }}
             onKeyDown={(e) =>
               e.key === "Enter" &&
               (selecting ? toggleSelected(book.id) : onOpen(book))
