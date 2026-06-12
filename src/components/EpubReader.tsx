@@ -9,8 +9,22 @@ import {
 } from "../api";
 import { ReaderPanel } from "./ReaderPanel";
 import { FocusReader, type WordChunk } from "./FocusReader";
+import { TocPanel, type TocItem } from "./TocPanel";
 
 const HIGHLIGHT_STYLE = { fill: "rgba(224, 164, 88, 0.35)" };
+
+interface EpubNavItem {
+  label: string;
+  href: string;
+  subitems?: EpubNavItem[];
+}
+
+function flattenEpubToc(nodes: EpubNavItem[], depth = 0): TocItem[] {
+  return nodes.flatMap((n) => [
+    { label: n.label.trim() || "(sin título)", depth, target: n.href, page: null },
+    ...flattenEpubToc(n.subitems ?? [], depth + 1),
+  ]);
+}
 
 interface SpineSection {
   href: string;
@@ -53,6 +67,8 @@ export function EpubReader({ book, onClose }: Props) {
   const [percent, setPercent] = useState(book.percent);
   const [error, setError] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [tocOpen, setTocOpen] = useState(false);
+  const [toc, setToc] = useState<TocItem[] | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [toast, setToast] = useState<string | null>(null);
@@ -137,6 +153,11 @@ export function EpubReader({ book, onClose }: Props) {
       );
 
       rendition.on("keydown", handleKeys);
+      epubBook.loaded.navigation
+        .then((nav) => {
+          if (!destroyed) setToc(flattenEpubToc(nav.toc as unknown as EpubNavItem[]));
+        })
+        .catch(() => !destroyed && setToc([]));
       await rendition.display(book.location ?? undefined);
 
       // Re-aplicar subrayados guardados.
@@ -241,12 +262,25 @@ export function EpubReader({ book, onClose }: Props) {
         <button className="btn btn-ghost" onClick={onClose}>← Biblioteca</button>
         <span className="reader-title">{book.title}</span>
         <div className="reader-controls">
+          <button
+            className={`btn btn-ghost ${tocOpen ? "active" : ""}`}
+            title="Índice de capítulos"
+            onClick={() => {
+              setTocOpen((o) => !o);
+              setPanelOpen(false);
+            }}
+          >
+            ☰
+          </button>
           <button className="btn btn-ghost" title="Modo lector enfocado" onClick={openFocusMode}>⚡</button>
           <button className="btn btn-ghost" title="Marcar aquí" onClick={addBookmark}>🔖</button>
           <button
             className={`btn btn-ghost ${panelOpen ? "active" : ""}`}
             title="Notas del libro"
-            onClick={() => setPanelOpen((o) => !o)}
+            onClick={() => {
+              setPanelOpen((o) => !o);
+              setTocOpen(false);
+            }}
           >
             📑
           </button>
@@ -269,6 +303,13 @@ export function EpubReader({ book, onClose }: Props) {
           <div className="epub-view" ref={viewRef} />
           <button className="epub-nav" onClick={() => renditionRef.current?.next()}>›</button>
         </div>
+        {tocOpen && (
+          <TocPanel
+            items={toc}
+            onJump={(item) => renditionRef.current?.display(item.target)}
+            onClose={() => setTocOpen(false)}
+          />
+        )}
         {panelOpen && (
           <ReaderPanel
             highlights={highlights}

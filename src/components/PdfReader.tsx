@@ -11,8 +11,49 @@ import {
 } from "../api";
 import { ReaderPanel } from "./ReaderPanel";
 import { FocusReader, type WordChunk } from "./FocusReader";
+import { TocPanel, type TocItem } from "./TocPanel";
 
 const PAGE_GAP = 12;
+
+type OutlineNode = {
+  title: string;
+  dest: string | unknown[] | null;
+  items: OutlineNode[];
+};
+
+/** Aplana el outline del PDF resolviendo cada destino a su página. */
+async function extractPdfToc(doc: PDFDocumentProxy): Promise<TocItem[]> {
+  const outline = (await doc.getOutline()) as OutlineNode[] | null;
+  if (!outline) return [];
+  const items: TocItem[] = [];
+
+  async function resolvePage(dest: string | unknown[] | null): Promise<number | null> {
+    try {
+      const explicit =
+        typeof dest === "string" ? await doc.getDestination(dest) : dest;
+      if (!explicit || !explicit[0]) return null;
+      return (await doc.getPageIndex(explicit[0] as Parameters<typeof doc.getPageIndex>[0])) + 1;
+    } catch {
+      return null;
+    }
+  }
+
+  async function walk(nodes: OutlineNode[], depth: number) {
+    for (const node of nodes) {
+      const page = await resolvePage(node.dest);
+      items.push({
+        label: node.title || "(sin título)",
+        depth,
+        target: String(page ?? ""),
+        page,
+      });
+      if (node.items?.length) await walk(node.items, depth + 1);
+    }
+  }
+
+  await walk(outline, 0);
+  return items.filter((i) => i.page !== null);
+}
 
 interface PageProps {
   doc: PDFDocumentProxy;
@@ -120,6 +161,8 @@ export function PdfReader({ book, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [popup, setPopup] = useState<Popup | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [tocOpen, setTocOpen] = useState(false);
+  const [toc, setToc] = useState<TocItem[] | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [toast, setToast] = useState<string | null>(null);
@@ -160,6 +203,9 @@ export function PdfReader({ book, onClose }: Props) {
       if (!active) return;
       setBaseSize({ w: vp.width, h: vp.height });
       setDoc(d);
+      extractPdfToc(d)
+        .then((t) => active && setToc(t))
+        .catch(() => active && setToc([]));
     })().catch((e) => active && setError(String(e)));
     return () => {
       active = false;
@@ -312,12 +358,25 @@ export function PdfReader({ book, onClose }: Props) {
         <button className="btn btn-ghost" onClick={onClose}>← Biblioteca</button>
         <span className="reader-title">{book.title}</span>
         <div className="reader-controls">
+          <button
+            className={`btn btn-ghost ${tocOpen ? "active" : ""}`}
+            title="Índice de capítulos"
+            onClick={() => {
+              setTocOpen((o) => !o);
+              setPanelOpen(false);
+            }}
+          >
+            ☰
+          </button>
           <button className="btn btn-ghost" title="Modo lector enfocado" onClick={openFocusMode}>⚡</button>
           <button className="btn btn-ghost" title="Marcar aquí" onClick={addBookmark}>🔖</button>
           <button
             className={`btn btn-ghost ${panelOpen ? "active" : ""}`}
             title="Notas del libro"
-            onClick={() => setPanelOpen((o) => !o)}
+            onClick={() => {
+              setPanelOpen((o) => !o);
+              setTocOpen(false);
+            }}
           >
             📑
           </button>
@@ -351,6 +410,13 @@ export function PdfReader({ book, onClose }: Props) {
             <p className="status">Cargando…</p>
           )}
         </div>
+        {tocOpen && (
+          <TocPanel
+            items={toc}
+            onJump={(item) => item.page && scrollToPage(item.page)}
+            onClose={() => setTocOpen(false)}
+          />
+        )}
         {panelOpen && (
           <ReaderPanel
             highlights={highlights}

@@ -521,6 +521,35 @@ button {
   font-size: 0.75rem;
 }
 
+.toc-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--fg);
+  text-align: left;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  padding: 0.3rem 0.4rem;
+  border-radius: 6px;
+}
+
+.toc-item:hover {
+  background: var(--bg-hover);
+}
+
+.toc-label {
+  flex: 1;
+}
+
+.toc-page {
+  color: var(--fg-dim);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .btn-ghost.active {
   background: var(--bg-hover);
   border-radius: 6px;
