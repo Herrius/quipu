@@ -8,7 +8,13 @@ import {
   type Highlight,
 } from "../api";
 import { ReaderPanel } from "./ReaderPanel";
-import { FocusReader, type WordChunk } from "./FocusReader";
+import {
+  FocusReader,
+  loadRsvpPosition,
+  saveRsvpPosition,
+  type FocusPosition,
+  type WordChunk,
+} from "./FocusReader";
 import { TocPanel, type TocItem } from "./TocPanel";
 
 const HIGHLIGHT_STYLE = { fill: "rgba(224, 164, 88, 0.35)" };
@@ -59,6 +65,7 @@ export function EpubReader({ book, onClose }: Props) {
   const cfiRef = useRef<string | null>(book.location);
   const spineIdxRef = useRef(0);
   const focusIdxRef = useRef(0);
+  const focusOffsetRef = useRef(0);
   const [focusMode, setFocusMode] = useState(false);
   const focusModeRef = useRef(false);
   focusModeRef.current = focusMode;
@@ -214,7 +221,11 @@ export function EpubReader({ book, onClose }: Props) {
   }
 
   function openFocusMode() {
+    // Si pausó en este mismo capítulo, retomar en la palabra exacta.
+    const saved = loadRsvpPosition(book.id);
     focusIdxRef.current = spineIdxRef.current;
+    focusOffsetRef.current =
+      saved && saved.marker === spineIdxRef.current ? saved.offset : 0;
     setFocusMode(true);
   }
 
@@ -235,14 +246,16 @@ export function EpubReader({ book, onClose }: Props) {
     return { words: text.split(/\s+/).filter(Boolean), marker: idx };
   }, []);
 
-  function closeFocusMode(lastMarker: number | null) {
+  function closeFocusMode(pos: FocusPosition | null) {
     setFocusMode(false);
-    if (lastMarker !== null && lastMarker !== spineIdxRef.current) {
+    if (!pos) return;
+    saveRsvpPosition(book.id, pos);
+    if (pos.marker !== spineIdxRef.current) {
       const epubBook = epubBookRef.current;
       const spine = epubBook?.spine as unknown as
         | { get: (target: number) => SpineSection | null }
         | undefined;
-      const section = spine?.get(lastMarker);
+      const section = spine?.get(pos.marker);
       if (section) renditionRef.current?.display(section.href);
     }
   }
@@ -334,6 +347,7 @@ export function EpubReader({ book, onClose }: Props) {
         <FocusReader
           title={book.title}
           loadMore={loadFocusWords}
+          initialOffset={focusOffsetRef.current}
           onClose={closeFocusMode}
         />
       )}

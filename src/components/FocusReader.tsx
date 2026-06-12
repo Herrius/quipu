@@ -11,12 +11,33 @@ interface Word {
   marker: number;
 }
 
+export interface FocusPosition {
+  marker: number;
+  /** Índice de palabra DENTRO de ese marker (página/capítulo). */
+  offset: number;
+}
+
+/** Posición exacta (palabra) donde pausó el modo enfocado, por libro. */
+export function loadRsvpPosition(bookId: number): FocusPosition | null {
+  try {
+    return JSON.parse(localStorage.getItem(`quipu.rsvp.${bookId}`) ?? "null");
+  } catch {
+    return null;
+  }
+}
+
+export function saveRsvpPosition(bookId: number, pos: FocusPosition) {
+  localStorage.setItem(`quipu.rsvp.${bookId}`, JSON.stringify(pos));
+}
+
 interface Props {
   title: string;
   /** Devuelve el siguiente bloque de palabras, o null si no hay más. */
   loadMore: () => Promise<WordChunk | null>;
-  /** Al cerrar recibe el marker de la última palabra mostrada. */
-  onClose: (lastMarker: number | null) => void;
+  /** Palabra inicial dentro del primer bloque (reanudar donde pausó). */
+  initialOffset?: number;
+  /** Al cerrar recibe la posición exacta de la última palabra mostrada. */
+  onClose: (pos: FocusPosition | null) => void;
 }
 
 /** Punto de reconocimiento óptimo: la letra que se fija en el centro. */
@@ -38,7 +59,7 @@ function wordDelay(word: string, wpm: number): number {
   return ms;
 }
 
-export function FocusReader({ title, loadMore, onClose }: Props) {
+export function FocusReader({ title, loadMore, initialOffset = 0, onClose }: Props) {
   const [words, setWords] = useState<Word[]>([]);
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -50,10 +71,20 @@ export function FocusReader({ title, loadMore, onClose }: Props) {
     () => localStorage.getItem("quipu.focusTheme") === "light",
   );
   const loading = useRef(false);
+  const resumed = useRef(false);
   const idxRef = useRef(0);
   idxRef.current = idx;
   const wordsRef = useRef(words);
   wordsRef.current = words;
+
+  // Reanudar en la palabra exacta donde pausó (dentro del primer bloque).
+  useEffect(() => {
+    if (resumed.current || words.length === 0) return;
+    resumed.current = true;
+    if (initialOffset > 0) {
+      setIdx(Math.min(initialOffset, words.length - 1));
+    }
+  }, [words, initialOffset]);
 
   useEffect(() => {
     localStorage.setItem("quipu.wpm", String(wpm));
@@ -104,8 +135,15 @@ export function FocusReader({ title, loadMore, onClose }: Props) {
   }, [playing, idx, words, wpm, exhausted, fetchMore]);
 
   const close = useCallback(() => {
-    const w = wordsRef.current[Math.min(idxRef.current, wordsRef.current.length - 1)];
-    onClose(w ? w.marker : null);
+    const all = wordsRef.current;
+    const i = Math.min(idxRef.current, all.length - 1);
+    const w = all[i];
+    if (!w) {
+      onClose(null);
+      return;
+    }
+    const firstOfMarker = all.findIndex((x) => x.marker === w.marker);
+    onClose({ marker: w.marker, offset: i - firstOfMarker });
   }, [onClose]);
 
   useEffect(() => {

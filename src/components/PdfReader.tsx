@@ -10,7 +10,13 @@ import {
   type Highlight,
 } from "../api";
 import { ReaderPanel } from "./ReaderPanel";
-import { FocusReader, type WordChunk } from "./FocusReader";
+import {
+  FocusReader,
+  loadRsvpPosition,
+  saveRsvpPosition,
+  type FocusPosition,
+  type WordChunk,
+} from "./FocusReader";
 import { TocPanel, type TocItem } from "./TocPanel";
 
 const PAGE_GAP = 12;
@@ -168,6 +174,7 @@ export function PdfReader({ book, onClose }: Props) {
   const [toast, setToast] = useState<string | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const focusPageRef = useRef(1);
+  const focusOffsetRef = useRef(0);
   const restored = useRef(false);
   const pageRef = useRef(page);
   pageRef.current = page;
@@ -310,7 +317,11 @@ export function PdfReader({ book, onClose }: Props) {
   }
 
   function openFocusMode() {
+    // Si pausó el modo enfocado en esta misma página, retomar en la
+    // palabra exacta; si se movió de página, empezar al inicio de esta.
+    const saved = loadRsvpPosition(book.id);
     focusPageRef.current = page;
+    focusOffsetRef.current = saved && saved.marker === page ? saved.offset : 0;
     setFocusMode(true);
   }
 
@@ -326,11 +337,12 @@ export function PdfReader({ book, onClose }: Props) {
     return { words: text.split(/\s+/).filter(Boolean), marker: p };
   }, [doc]);
 
-  function closeFocusMode(lastMarker: number | null) {
+  function closeFocusMode(pos: FocusPosition | null) {
     setFocusMode(false);
-    if (lastMarker !== null) {
-      setPage(lastMarker);
-      scrollToPage(lastMarker);
+    if (pos) {
+      saveRsvpPosition(book.id, pos);
+      setPage(pos.marker);
+      scrollToPage(pos.marker);
     }
   }
 
@@ -449,6 +461,7 @@ export function PdfReader({ book, onClose }: Props) {
         <FocusReader
           title={book.title}
           loadMore={loadFocusWords}
+          initialOffset={focusOffsetRef.current}
           onClose={closeFocusMode}
         />
       )}
