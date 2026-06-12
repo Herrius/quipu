@@ -35,11 +35,8 @@ export async function generateCover(
 }
 
 async function coverFromPdf(bookId: number, bytes: ArrayBuffer): Promise<void> {
-  const pdfjs = await import("pdfjs-dist");
-  const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url"))
-    .default;
-  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;
+  const { loadPdf } = await import("./pdf");
+  const doc = await loadPdf(bytes);
   try {
     const page = await doc.getPage(1);
     const base = page.getViewport({ scale: 1 });

@@ -22,7 +22,7 @@
     "security": {
       "csp": {
         "default-src": "'self'",
-        "script-src": "'self'",
+        "script-src": "'self' 'wasm-unsafe-eval'",
         "style-src": "'self' 'unsafe-inline' blob:",
         "img-src": "'self' blob: data:",
         "font-src": "'self' blob: data:",

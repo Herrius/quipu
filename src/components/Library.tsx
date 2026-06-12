@@ -99,7 +99,7 @@ export function Library({ books, onOpen, onChanged }: Props) {
           await generateCover(b.id, b.format);
           generated++;
         } catch (e) {
-          console.warn(`Sin portada para «${b.title}»:`, e);
+          console.warn("Sin portada para libro:", b.title, e);
         }
       }
       coverSweepRunning.current = false;

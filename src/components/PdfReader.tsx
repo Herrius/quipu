@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import { TextLayer } from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { loadPdf } from "../pdf";
 import {
   addHighlightEnsuringDir,
   api,
@@ -12,8 +11,6 @@ import {
 } from "../api";
 import { ReaderPanel } from "./ReaderPanel";
 import { FocusReader, type WordChunk } from "./FocusReader";
-
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const PAGE_GAP = 12;
 
@@ -152,7 +149,7 @@ export function PdfReader({ book, onClose }: Props) {
     let loaded: PDFDocumentProxy | null = null;
     (async () => {
       const bytes = await api.readBook(book.id);
-      const d = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;
+      const d = await loadPdf(bytes);
       if (!active) {
         d.loadingTask.destroy();
         return;
