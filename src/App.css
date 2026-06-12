@@ -294,6 +294,19 @@ button {
   gap: 0.3rem;
 }
 
+.cover-zoom {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--fg-dim);
+}
+
+.cover-zoom input[type="range"] {
+  width: 90px;
+  accent-color: var(--accent-soft);
+  cursor: pointer;
+}
+
 .pill {
   background: transparent;
   border: 1px solid var(--border);

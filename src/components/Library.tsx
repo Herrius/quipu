@@ -75,6 +75,14 @@ export function Library({ books, onOpen, onChanged }: Props) {
   const [menuFor, setMenuFor] = useState<number | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [coverSize, setCoverSize] = useState(() => {
+    const saved = Number(localStorage.getItem("quipu.coverSize"));
+    return saved >= 100 && saved <= 280 ? saved : 150;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("quipu.coverSize", String(coverSize));
+  }, [coverSize]);
 
   useEffect(() => {
     api.detectCalibreLibrary().then(setDetected);
@@ -336,6 +344,17 @@ export function Library({ books, onOpen, onChanged }: Props) {
           </>
         ) : (
           <>
+            <label className="cover-zoom" title="Tamaño de las carátulas">
+              <span>🔳</span>
+              <input
+                type="range"
+                min={100}
+                max={280}
+                step={10}
+                value={coverSize}
+                onChange={(e) => setCoverSize(Number(e.target.value))}
+              />
+            </label>
             <button
               className="btn btn-ghost"
               title="Carpeta de Obsidian para subrayados"
@@ -356,7 +375,12 @@ export function Library({ books, onOpen, onChanged }: Props) {
         )}
       </header>
       {status && <p className="status">{status}</p>}
-      <div className="grid">
+      <div
+        className="grid"
+        style={{
+          gridTemplateColumns: `repeat(auto-fill, minmax(${coverSize}px, 1fr))`,
+        }}
+      >
         {filtered.map((book) => (
           <div
             key={book.id}
