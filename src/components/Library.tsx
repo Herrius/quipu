@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { api, pickExportDir, type Book, type Status } from "../api";
-import { ingestWithCover } from "../ingest";
+import { generateCover, ingestWithCover } from "../ingest";
 
 const NEXT_STATUS: Record<Status, Status> = {
   por_leer: "leyendo",
@@ -79,6 +79,33 @@ export function Library({ books, onOpen, onChanged }: Props) {
   useEffect(() => {
     api.detectCalibreLibrary().then(setDetected);
   }, []);
+
+  // Generar portadas faltantes en segundo plano (render de la 1.ª página
+  // del PDF / portada del EPUB). Secuencial para no cargar varios archivos
+  // grandes a la vez; un solo intento por libro para no reintentar fallos.
+  const coverAttempts = useRef<Set<number>>(new Set());
+  const coverSweepRunning = useRef(false);
+  useEffect(() => {
+    const pending = books.filter(
+      (b) => !b.has_cover && !coverAttempts.current.has(b.id),
+    );
+    if (pending.length === 0 || coverSweepRunning.current) return;
+    coverSweepRunning.current = true;
+    (async () => {
+      let generated = 0;
+      for (const b of pending) {
+        coverAttempts.current.add(b.id);
+        try {
+          await generateCover(b.id, b.format);
+          generated++;
+        } catch (e) {
+          console.warn(`Sin portada para «${b.title}»:`, e);
+        }
+      }
+      coverSweepRunning.current = false;
+      if (generated > 0) onChanged();
+    })();
+  }, [books, onChanged]);
 
   // Cerrar el menú contextual al hacer clic fuera o con Escape.
   useEffect(() => {
