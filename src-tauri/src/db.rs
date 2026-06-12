@@ -75,6 +75,31 @@ fn migrate(conn: &Connection) -> Result<(), rusqlite::Error> {
             ",
         )?;
     }
+    if version < 3 {
+        // Timestamps por dominio para la sincronización entre PCs
+        // (quipu-sync.json): gana el lado más reciente. El backfill solo
+        // marca lo que el usuario realmente tocó, para que una instalación
+        // fresca nunca pise datos reales con sus valores por defecto.
+        conn.execute_batch(
+            "
+            ALTER TABLE books ADD COLUMN meta_updated_at TEXT;
+            ALTER TABLE books ADD COLUMN notes_updated_at TEXT;
+
+            UPDATE books SET meta_updated_at = datetime('now')
+            WHERE status != 'por_leer' OR rating IS NOT NULL;
+
+            UPDATE books SET notes_updated_at = (
+                SELECT MAX(ts) FROM (
+                    SELECT MAX(created_at) AS ts FROM highlights WHERE book_id = books.id
+                    UNION ALL
+                    SELECT MAX(created_at) FROM bookmarks WHERE book_id = books.id
+                )
+            );
+
+            PRAGMA user_version = 3;
+            ",
+        )?;
+    }
     Ok(())
 }
 

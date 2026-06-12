@@ -101,6 +101,9 @@ export const api = {
 
   updateBookMeta: (bookId: number, title: string, authors: string) =>
     invoke<void>("update_book_meta", { bookId, title, authors }),
+
+  syncState: () =>
+    invoke<{ pulled: number; pushed: number }>("sync_state"),
 };
 
 /** Pide al usuario la carpeta del vault donde van los subrayados. */

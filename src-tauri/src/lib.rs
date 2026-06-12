@@ -2,6 +2,7 @@ mod calibre;
 mod commands;
 mod db;
 mod export;
+mod sync;
 
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -45,6 +46,7 @@ pub fn run() {
             commands::ingest_book,
             commands::save_cover,
             commands::update_book_meta,
+            commands::sync_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

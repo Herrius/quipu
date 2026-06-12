@@ -15,6 +15,9 @@ export default function App() {
   const [current, setCurrent] = useState<Book | null>(null);
 
   const refresh = useCallback(async () => {
+    // Merge con quipu-sync.json (estado compartido entre PCs vía la nube)
+    // antes de listar; si falla (nube fuera de línea, etc.) se lee igual.
+    await api.syncState().catch((e) => console.warn("sync:", e));
     setBooks(await api.listBooks());
   }, []);
 

@@ -1,6 +1,6 @@
 [package]
 name = "quipu"
-version = "0.1.0"
+version = "0.1.1"
 description = "Quipu — biblioteca y lector personal de PDF/EPUB"
 authors = ["Enrique Ubaldo"]
 edition = "2021"

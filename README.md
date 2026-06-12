@@ -35,6 +35,7 @@ Calibre es un excelente gestor, pero como *lector* se queda corto: no retoma la 
 - **📊 Estados y puntuación** — por leer / leyendo / leído (con filtros) y rating de 1-5 estrellas.
 - **⚡ Modo lector enfocado (RSVP)** — una palabra a la vez con punto de fijación, 100-900 ppm, tema claro/oscuro, pausas naturales en la puntuación.
 - **🗑️ Gestión segura** — quitar libros (individual o selección múltiple) y vaciar notas, siempre con advertencia previa; los archivos de Calibre **nunca** se tocan.
+- **🔄 Sincronización entre PCs** — progreso, estados, puntuaciones y notas viajan en un `quipu-sync.json` dentro de la carpeta de tu biblioteca: si esa carpeta ya se sincroniza por tu nube (Drive, MEGA, Syncthing…), retomas en otra máquina donde quedaste. Merge por libro y dominio, gana el cambio más reciente.
 - **🌙 Lectura cómoda** — tema oscuro, zoom y ajuste al ancho en PDF; temas dark/sepia/light y tamaño de letra en EPUB.
 
 ## 🚀 Instalación

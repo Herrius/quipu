@@ -154,7 +154,7 @@ pub fn set_status(state: State<AppState>, book_id: i64, status: String) -> Resul
     }
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute(
-        "UPDATE books SET status = ?2 WHERE id = ?1",
+        "UPDATE books SET status = ?2, meta_updated_at = datetime('now') WHERE id = ?1",
         rusqlite::params![book_id, status],
     )
     .map_err(|e| e.to_string())?;
@@ -176,7 +176,7 @@ pub fn set_rating(
     }
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute(
-        "UPDATE books SET rating = ?2 WHERE id = ?1",
+        "UPDATE books SET rating = ?2, meta_updated_at = datetime('now') WHERE id = ?1",
         rusqlite::params![book_id, rating],
     )
     .map_err(|e| e.to_string())?;
@@ -201,7 +201,18 @@ pub fn add_highlight(
         rusqlite::params![book_id, location, page, text.trim()],
     )
     .map_err(|e| e.to_string())?;
+    touch_notes(&conn, book_id)?;
     export::export_book(&conn, book_id)?;
+    Ok(())
+}
+
+/// Sella el timestamp de notas del libro (para la sincronización entre PCs).
+fn touch_notes(conn: &rusqlite::Connection, book_id: i64) -> Result<(), String> {
+    conn.execute(
+        "UPDATE books SET notes_updated_at = datetime('now') WHERE id = ?1",
+        [book_id],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -242,6 +253,7 @@ pub fn delete_highlight(state: State<AppState>, highlight_id: i64) -> Result<(),
         .map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM highlights WHERE id = ?1", [highlight_id])
         .map_err(|e| e.to_string())?;
+    touch_notes(&conn, book_id)?;
     let _ = export::export_book(&conn, book_id);
     Ok(())
 }
@@ -259,6 +271,7 @@ pub fn add_bookmark(
         rusqlite::params![book_id, location, page],
     )
     .map_err(|e| e.to_string())?;
+    touch_notes(&conn, book_id)?;
     Ok(())
 }
 
@@ -289,8 +302,16 @@ pub fn list_bookmarks(state: State<AppState>, book_id: i64) -> Result<Vec<Bookma
 #[tauri::command]
 pub fn delete_bookmark(state: State<AppState>, bookmark_id: i64) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let book_id: i64 = conn
+        .query_row(
+            "SELECT book_id FROM bookmarks WHERE id = ?1",
+            [bookmark_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM bookmarks WHERE id = ?1", [bookmark_id])
         .map_err(|e| e.to_string())?;
+    touch_notes(&conn, book_id)?;
     Ok(())
 }
 
@@ -321,7 +342,15 @@ pub fn delete_book_notes(state: State<AppState>, book_id: i64) -> Result<(), Str
         .map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM bookmarks WHERE book_id = ?1", [book_id])
         .map_err(|e| e.to_string())?;
+    touch_notes(&conn, book_id)?;
     Ok(())
+}
+
+/// Merge bidireccional con quipu-sync.json (estado entre PCs).
+#[tauri::command]
+pub fn sync_state(state: State<AppState>) -> Result<crate::sync::SyncReport, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    crate::sync::sync(&conn)
 }
 
 /// Quita el libro de la biblioteca: progreso, notas y archivo del vault.
